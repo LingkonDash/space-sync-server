@@ -108,6 +108,22 @@ async function run() {
             res.json(result);
         });
 
+        // ── GET /rooms/:id — single room detail (public) ───────────────────────────
+        app.get("/rooms/:id", async (req: Request, res: Response) => {
+            const { id } = req.params;
+
+            if (!ObjectId.isValid(id)) {
+                return res.status(400).json({ message: "Invalid room id" });
+            }
+
+            const result = await roomsCollection.findOne({ _id: new ObjectId(id) } as any);
+
+            if (!result) {
+                return res.status(404).json({ message: "Room not found" });
+            }
+
+            res.json(result);
+        });
 
     } finally {
         // await client.close();

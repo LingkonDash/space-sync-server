@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { MongoClient, ServerApiVersion, ObjectId, Collection } from "mongodb";
-import { AuthedRequest, JwtUserPayload, Space, UserRole } from "./types";
+import { AuthedRequest, Booking, JwtUserPayload, Review, Space, UserRole } from "./types";
 import { createRemoteJWKSet, jwtVerify } from "jose-cjs";
 
 dotenv.config();
@@ -17,9 +17,6 @@ const PAGE_SIZE = 12;
 
 if (!uri) throw new Error("Missing MONGODB_URI environment variable");
 if (!baseUrl) throw new Error("Missing NEXT_PUBLIC_BASE_URL environment variable");
-
-console.log(baseUrl);
-
 
 app.use(cors());
 app.use(express.json());
@@ -83,6 +80,8 @@ async function run() {
 
         const db = client.db("spaceSync");
         const roomsCollection: Collection<Space> = db.collection("rooms");
+        const bookingsCollection: Collection<Booking> = db.collection("bookings");
+        const reviewsCollection: Collection<Review> = db.collection("reviews");
 
         // ── GET /rooms — search/filter/sort/paginate (public, only approved) ──────
         app.get("/rooms", async (req: Request, res: Response) => {
@@ -236,10 +235,35 @@ async function run() {
             const result = await roomsCollection.find({ hostEmail: email } as any).sort({ createdAt: -1 }).toArray();
             res.json(result);
         });
-        
+
         app.get("/rooms/host/admin", verifyToken, requireRole("admin"), async (req: AuthedRequest, res: Response) => {
             const email = req.user?.email;
             const result = await roomsCollection.find().sort({ createdAt: -1 }).toArray();
+            res.json(result);
+        });
+
+
+
+        // ── POST /bookings — user books a space ─────────────────────────────────────
+        app.post("/bookings", verifyToken, async (req: AuthedRequest, res: Response) => {
+            const bookingData: Booking = {
+                ...req.body,
+                userId: req.user?.id,
+                userEmail: req.user?.email,
+                status: "pending",
+                createdAt: new Date(),
+            };
+
+            const result = await bookingsCollection.insertOne(bookingData as any);
+            res.json(result);
+        });
+
+        // ── GET /bookings/me — logged-in user's own bookings ────────────────────────
+        app.get("/bookings/me", verifyToken, async (req: AuthedRequest, res: Response) => {
+            const result = await bookingsCollection
+                .find({ userId: req.user?.id } as any)
+                .sort({ createdAt: -1 })
+                .toArray();
             res.json(result);
         });
 

@@ -3,7 +3,7 @@ export type CategoryCode = "co-working" | "meeting-room" | "event-hall" | "studi
 export type CategoryLabel = "Co-working" | "Meeting Room" | "Event Hall" | "Studio";
 export type SpaceStatus = "pending" | "approved" | "rejected";
 export type UserRole = "user" | "host" | "admin";
-
+export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 
 export interface Space {
   _id?: string;
@@ -23,6 +23,31 @@ export interface Space {
   rating: number;
   reviewCount: number;
   status: SpaceStatus;
+  createdAt?: Date;
+}
+
+
+export interface Booking {
+  _id?: string;
+  spaceId: string;
+  userId: string;
+  userEmail: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  totalPrice: number;
+  status: BookingStatus;
+  createdAt?: Date;
+}
+
+export interface Review {
+  _id?: string;
+  spaceId: string;
+  userId: string;
+  userName: string;
+  bookingId: string;
+  rating: number;
+  comment: string;
   createdAt?: Date;
 }
 

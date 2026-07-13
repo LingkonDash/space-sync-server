@@ -269,6 +269,40 @@ async function run() {
 
 
 
+        // ── GET /bookings/host — bookings for a host's spaces ───────────────────────
+        app.get("/bookings/host", verifyToken, requireRole("host", "admin"), async (req: AuthedRequest, res: Response) => {
+            const hostEmail = req.user?.email;
+
+            const hostRooms = await roomsCollection.find({ hostEmail } as any).toArray();
+            const roomIds = hostRooms.map((room) => String(room._id));
+
+            const result = await bookingsCollection
+                .find({ spaceId: { $in: roomIds } } as any)
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            res.json(result);
+        });
+
+
+        // ── PATCH /bookings/:id/status — host confirms/cancels/completes ──────────
+        app.patch("/bookings/:id/status", verifyToken, requireRole("host", "admin"), async (req: Request, res: Response) => {
+            const { id } = req.params;
+            const { status } = req.body as { status: Booking["status"] };
+
+            if (!ObjectId.isValid(id)) {
+                return res.status(400).json({ message: "Invalid booking id" });
+            }
+
+            const result = await bookingsCollection.updateOne(
+                { _id: new ObjectId(id) } as any,
+                { $set: { status } }
+            );
+            res.json(result);
+        });
+
+
+
     } finally {
         // await client.close();
     }

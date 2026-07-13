@@ -30,7 +30,7 @@ export interface Space {
 export interface JwtUserPayload {
   id: string;
   email: string;
-  role: UserRole;
+  userRole: UserRole;
   [key: string]: unknown; // jose's JWTPayload has other standard claims (iat, exp, etc.)
 }
 

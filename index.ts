@@ -18,6 +18,7 @@ const PAGE_SIZE = 12;
 if (!uri) throw new Error("Missing MONGODB_URI environment variable");
 if (!baseUrl) throw new Error("Missing NEXT_PUBLIC_BASE_URL environment variable");
 
+console.log(baseUrl);
 
 
 app.use(cors());
@@ -35,7 +36,9 @@ const client = new MongoClient(uri, {
 
 
 // ── JWKS + auth middleware ────────────────────────────────────────────────────
-const JWKS = createRemoteJWKSet(new URL(`${baseUrl}/api/auth/jwks`));
+const JWKS = createRemoteJWKSet(new URL(`${baseUrl}/api/auth/jwks`), { timeoutDuration: 15000 });
+
+
 
 const verifyToken = async (req: AuthedRequest, res: Response, next: NextFunction) => {
     try {
@@ -50,15 +53,20 @@ const verifyToken = async (req: AuthedRequest, res: Response, next: NextFunction
         req.user = payload as unknown as JwtUserPayload;
         next();
     } catch (e) {
-        console.log(e);
-        return res.status(403).json({ message: "Forbidden" });
+        console.error("JWT verification failed:");
+        console.error(e);
+
+        return res.status(403).json({
+            message: "Forbidden",
+            error: e instanceof Error ? e.message : e,
+        });
     }
 };
 
 // ── Role guard — use AFTER verifyToken ───────────────────────────────────────
 const requireRole = (...allowedRoles: UserRole[]) => {
     return (req: AuthedRequest, res: Response, next: NextFunction) => {
-        const role = req.user?.role;
+        const role = req.user?.userRole as UserRole;
         if (!role || !allowedRoles.includes(role)) {
             return res.status(403).json({ message: "Forbidden — insufficient role" });
         }
@@ -174,7 +182,68 @@ async function run() {
             res.json(result);
         });
 
+
+
+        // ── PATCH /rooms/:id — host edits own room, or admin edits any ────────────
+        app.patch("/rooms/:id", verifyToken, requireRole("host", "admin"), async (req: AuthedRequest, res: Response) => {
+            const { id } = req.params;
+            if (!ObjectId.isValid(id)) {
+                return res.status(400).json({ message: "Invalid room id" });
+            }
+
+            const room = await roomsCollection.findOne({ _id: new ObjectId(id) } as any);
+            if (!room) {
+                return res.status(404).json({ message: "Room not found" });
+            }
+
+            if (req.user?.role !== "admin" && room.hostEmail !== req.user?.email) {
+                return res.status(403).json({ message: "You can only edit your own spaces" });
+            }
+            const updateData = { ...req.body };
+            delete updateData._id;
+
+            const result = await roomsCollection.updateOne(
+                { _id: new ObjectId(id) } as any,
+                { $set: updateData }
+            );
+            res.json(result);
+        });
+
+        // ── DELETE /rooms/:id — host deletes own room, or admin deletes any ────────
+        app.delete("/rooms/:id", verifyToken, requireRole("host", "admin"), async (req: AuthedRequest, res: Response) => {
+            const { id } = req.params;
+            if (!ObjectId.isValid(id)) {
+                return res.status(400).json({ message: "Invalid room id" });
+            }
+
+            const room = await roomsCollection.findOne({ _id: new ObjectId(id) } as any);
+            if (!room) {
+                return res.status(404).json({ message: "Room not found" });
+            }
+
+            if (req.user?.role !== "admin" && room.hostEmail !== req.user?.email) {
+                return res.status(403).json({ message: "You can only delete your own spaces" });
+            }
+
+            const result = await roomsCollection.deleteOne({ _id: new ObjectId(id) } as any);
+            res.json(result);
+        });
+
+
+        // ── GET /rooms/host/mine — host's own listings for Manage Spaces page ──────
+        app.get("/rooms/host/mine", verifyToken, requireRole("host", "admin"), async (req: AuthedRequest, res: Response) => {
+            const email = req.user?.email;
+            const result = await roomsCollection.find({ hostEmail: email } as any).sort({ createdAt: -1 }).toArray();
+            res.json(result);
+        });
         
+        app.get("/rooms/host/admin", verifyToken, requireRole("admin"), async (req: AuthedRequest, res: Response) => {
+            const email = req.user?.email;
+            const result = await roomsCollection.find().sort({ createdAt: -1 }).toArray();
+            res.json(result);
+        });
+
+
 
     } finally {
         // await client.close();

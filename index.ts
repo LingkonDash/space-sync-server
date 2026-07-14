@@ -228,6 +228,50 @@ async function run() {
             res.json(result);
         });
 
+        // ── PATCH /rooms/:id/status — admin approves/rejects a listing ─────────────
+        app.patch("/rooms/:id/status", verifyToken, requireRole("admin"), async (req: Request, res: Response) => {
+            const { id } = req.params;
+            const { status } = req.body as { status: Space["status"] };
+
+            if (!ObjectId.isValid(id)) {
+                return res.status(400).json({ message: "Invalid room id" });
+            }
+
+            const result = await roomsCollection.updateOne(
+                { _id: new ObjectId(id) } as any,
+                { $set: { status } }
+            );
+            res.json(result);
+        });
+
+
+        // ── GET /rooms/:id/related — same category, excluding itself ───────────────
+        app.get("/rooms/:id/related", async (req: Request, res: Response) => {
+            const { id } = req.params;
+            const limit = Number(req.query.limit) || 4;
+
+            if (!ObjectId.isValid(id)) {
+                return res.status(400).json({ message: "Invalid room id" });
+            }
+
+            const current = await roomsCollection.findOne({ _id: new ObjectId(id) } as any);
+            if (!current) {
+                return res.status(404).json({ message: "Room not found" });
+            }
+
+            const result = await roomsCollection
+                .find({
+                    _id: { $ne: new ObjectId(id) },
+                    category: current.category,
+                    status: "approved",
+                } as any)
+                .limit(limit)
+                .toArray();
+
+            res.json(result);
+        });
+
+
 
         // ── GET /rooms/host/mine — host's own listings for Manage Spaces page ──────
         app.get("/rooms/host/mine", verifyToken, requireRole("host", "admin"), async (req: AuthedRequest, res: Response) => {
@@ -267,6 +311,15 @@ async function run() {
             res.json(result);
         });
 
+        // ── GET /bookings/me — logged-in user's own bookings ────────────────────────
+        app.get("/bookings/admin", verifyToken, requireRole('admin'), async (req: AuthedRequest, res: Response) => {
+            const result = await bookingsCollection
+                .find()
+                .sort({ createdAt: -1 })
+                .toArray();
+            res.json(result);
+        });
+
 
 
         // ── GET /bookings/host — bookings for a host's spaces ───────────────────────
@@ -298,6 +351,42 @@ async function run() {
                 { _id: new ObjectId(id) } as any,
                 { $set: { status } }
             );
+            res.json(result);
+        });
+
+
+
+        // ── GET /users — admin: list all users ──────────────────────────────────────
+        app.get("/users", verifyToken, requireRole("admin"), async (req: Request, res: Response) => {
+            const result = await usersCollection.find().toArray();
+            res.json(result);
+        });
+
+        // ── PATCH /users/:id/role — admin changes a user's role (self-guard) ──────
+        app.patch("/users/:id/role", verifyToken, requireRole("admin"), async (req: AuthedRequest, res: Response) => {
+            const { id } = req.params;
+            const { role } = req.body as { role: UserRole };
+
+            if (req.user?.id === id) {
+                return res.status(400).json({ message: "You cannot change your own role" });
+            }
+
+            const result = await usersCollection.updateOne(
+                { _id: new ObjectId(id) } as any,
+                { $set: { role } }
+            );
+            res.json(result);
+        });
+
+        // ── DELETE /users/:id — admin deletes a user (self-guard) ──────────────────
+        app.delete("/users/:id", verifyToken, requireRole("admin"), async (req: AuthedRequest, res: Response) => {
+            const { id } = req.params;
+
+            if (req.user?.id === id) {
+                return res.status(400).json({ message: "You cannot delete your own account" });
+            }
+
+            const result = await usersCollection.deleteOne({ _id: new ObjectId(id) } as any);
             res.json(result);
         });
 

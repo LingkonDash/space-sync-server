@@ -76,7 +76,7 @@ const requireRole = (...allowedRoles: UserRole[]) => {
 // ── Mongo run() function ──────────────────────────────────────────────────────
 async function run() {
     try {
-        await client.connect();
+        // await client.connect();
 
         const db = client.db("spaceSync");
         const roomsCollection: Collection<Space> = db.collection("rooms");
@@ -356,40 +356,7 @@ async function run() {
 
 
 
-        // ── GET /users — admin: list all users ──────────────────────────────────────
-        app.get("/users", verifyToken, requireRole("admin"), async (req: Request, res: Response) => {
-            const result = await usersCollection.find().toArray();
-            res.json(result);
-        });
-
-        // ── PATCH /users/:id/role — admin changes a user's role (self-guard) ──────
-        app.patch("/users/:id/role", verifyToken, requireRole("admin"), async (req: AuthedRequest, res: Response) => {
-            const { id } = req.params;
-            const { role } = req.body as { role: UserRole };
-
-            if (req.user?.id === id) {
-                return res.status(400).json({ message: "You cannot change your own role" });
-            }
-
-            const result = await usersCollection.updateOne(
-                { _id: new ObjectId(id) } as any,
-                { $set: { role } }
-            );
-            res.json(result);
-        });
-
-        // ── DELETE /users/:id — admin deletes a user (self-guard) ──────────────────
-        app.delete("/users/:id", verifyToken, requireRole("admin"), async (req: AuthedRequest, res: Response) => {
-            const { id } = req.params;
-
-            if (req.user?.id === id) {
-                return res.status(400).json({ message: "You cannot delete your own account" });
-            }
-
-            const result = await usersCollection.deleteOne({ _id: new ObjectId(id) } as any);
-            res.json(result);
-        });
-
+    
 
 
     } finally {

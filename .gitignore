@@ -57,3 +57,4 @@ public/uploads/
 # Local databases
 *.sqlite
 *.sqlite3
+.vercel

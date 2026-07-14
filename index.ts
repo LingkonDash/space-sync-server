@@ -1,12 +1,11 @@
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { MongoClient, ServerApiVersion, ObjectId, Collection } from "mongodb";
+import { MongoClient, ServerApiVersion, ObjectId, Collection, Filter, Sort } from "mongodb";
 import { AuthedRequest, Booking, JwtUserPayload, Review, Space, UserRole } from "./types";
 import { createRemoteJWKSet, jwtVerify } from "jose-cjs";
 
 dotenv.config();
-
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -30,12 +29,8 @@ const client = new MongoClient(uri, {
     },
 });
 
-
-
 // ── JWKS + auth middleware ────────────────────────────────────────────────────
 const JWKS = createRemoteJWKSet(new URL(`${baseUrl}/api/auth/jwks`), { timeoutDuration: 15000 });
-
-
 
 const verifyToken = async (req: AuthedRequest, res: Response, next: NextFunction) => {
     try {
@@ -71,8 +66,6 @@ const requireRole = (...allowedRoles: UserRole[]) => {
     };
 };
 
-
-
 // ── Mongo run() function ──────────────────────────────────────────────────────
 async function run() {
     try {
@@ -81,6 +74,7 @@ async function run() {
         const db = client.db("spaceSync");
         const roomsCollection: Collection<Space> = db.collection("rooms");
         const bookingsCollection: Collection<Booking> = db.collection("bookings");
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const reviewsCollection: Collection<Review> = db.collection("reviews");
 
         // ── GET /rooms — search/filter/sort/paginate (public, only approved) ──────
@@ -128,8 +122,8 @@ async function run() {
             const skip = (currentPage - 1) * PAGE_SIZE;
 
             const result = await roomsCollection
-                .find(query)
-                .sort(sortOption)
+                .find(query as Filter<Space>)
+                .sort(sortOption as Sort)
                 .skip(skip)
                 .limit(PAGE_SIZE)
                 .toArray();
@@ -158,7 +152,7 @@ async function run() {
                 return res.status(400).json({ message: "Invalid room id" });
             }
 
-            const result = await roomsCollection.findOne({ _id: new ObjectId(id) } as any);
+            const result = await roomsCollection.findOne({ _id: new ObjectId(id) } as Filter<Space>);
 
             if (!result) {
                 return res.status(404).json({ message: "Room not found" });
@@ -181,8 +175,6 @@ async function run() {
             res.json(result);
         });
 
-
-
         // ── PATCH /rooms/:id — host edits own room, or admin edits any ────────────
         app.patch("/rooms/:id", verifyToken, requireRole("host", "admin"), async (req: AuthedRequest, res: Response) => {
             const { id } = req.params;
@@ -190,19 +182,19 @@ async function run() {
                 return res.status(400).json({ message: "Invalid room id" });
             }
 
-            const room = await roomsCollection.findOne({ _id: new ObjectId(id) } as any);
+            const room = await roomsCollection.findOne({ _id: new ObjectId(id) } as Filter<Space>);
             if (!room) {
                 return res.status(404).json({ message: "Room not found" });
             }
 
-            if (req.user?.role !== "admin" && room.hostEmail !== req.user?.email) {
+            if (req.user?.userRole !== "admin" && room.hostEmail !== req.user?.email) {
                 return res.status(403).json({ message: "You can only edit your own spaces" });
             }
             const updateData = { ...req.body };
             delete updateData._id;
 
             const result = await roomsCollection.updateOne(
-                { _id: new ObjectId(id) } as any,
+                { _id: new ObjectId(id) } as Filter<Space>,
                 { $set: updateData }
             );
             res.json(result);
@@ -215,16 +207,16 @@ async function run() {
                 return res.status(400).json({ message: "Invalid room id" });
             }
 
-            const room = await roomsCollection.findOne({ _id: new ObjectId(id) } as any);
+            const room = await roomsCollection.findOne({ _id: new ObjectId(id) } as Filter<Space>);
             if (!room) {
                 return res.status(404).json({ message: "Room not found" });
             }
 
-            if (req.user?.role !== "admin" && room.hostEmail !== req.user?.email) {
+            if (req.user?.userRole !== "admin" && room.hostEmail !== req.user?.email) {
                 return res.status(403).json({ message: "You can only delete your own spaces" });
             }
 
-            const result = await roomsCollection.deleteOne({ _id: new ObjectId(id) } as any);
+            const result = await roomsCollection.deleteOne({ _id: new ObjectId(id) } as Filter<Space>);
             res.json(result);
         });
 
@@ -238,12 +230,11 @@ async function run() {
             }
 
             const result = await roomsCollection.updateOne(
-                { _id: new ObjectId(id) } as any,
+                { _id: new ObjectId(id) } as Filter<Space>,
                 { $set: { status } }
             );
             res.json(result);
         });
-
 
         // ── GET /rooms/:id/related — same category, excluding itself ───────────────
         app.get("/rooms/:id/related", async (req: Request, res: Response) => {
@@ -254,7 +245,7 @@ async function run() {
                 return res.status(400).json({ message: "Invalid room id" });
             }
 
-            const current = await roomsCollection.findOne({ _id: new ObjectId(id) } as any);
+            const current = await roomsCollection.findOne({ _id: new ObjectId(id) } as Filter<Space>);
             if (!current) {
                 return res.status(404).json({ message: "Room not found" });
             }
@@ -264,29 +255,24 @@ async function run() {
                     _id: { $ne: new ObjectId(id) },
                     category: current.category,
                     status: "approved",
-                } as any)
+                } as Filter<Space>)
                 .limit(limit)
                 .toArray();
 
             res.json(result);
         });
 
-
-
         // ── GET /rooms/host/mine — host's own listings for Manage Spaces page ──────
         app.get("/rooms/host/mine", verifyToken, requireRole("host", "admin"), async (req: AuthedRequest, res: Response) => {
             const email = req.user?.email;
-            const result = await roomsCollection.find({ hostEmail: email } as any).sort({ createdAt: -1 }).toArray();
+            const result = await roomsCollection.find({ hostEmail: email } as Filter<Space>).sort({ createdAt: -1 }).toArray();
             res.json(result);
         });
 
         app.get("/rooms/host/admin", verifyToken, requireRole("admin"), async (req: AuthedRequest, res: Response) => {
-            const email = req.user?.email;
             const result = await roomsCollection.find().sort({ createdAt: -1 }).toArray();
             res.json(result);
         });
-
-
 
         // ── POST /bookings — user books a space ─────────────────────────────────────
         app.post("/bookings", verifyToken, async (req: AuthedRequest, res: Response) => {
@@ -305,13 +291,13 @@ async function run() {
         // ── GET /bookings/me — logged-in user's own bookings ────────────────────────
         app.get("/bookings/me", verifyToken, async (req: AuthedRequest, res: Response) => {
             const result = await bookingsCollection
-                .find({ userId: req.user?.id } as any)
+                .find({ userId: req.user?.id } as Filter<Booking>)
                 .sort({ createdAt: -1 })
                 .toArray();
             res.json(result);
         });
 
-        // ── GET /bookings/me — logged-in user's own bookings ────────────────────────
+        // ── GET /bookings/admin — all bookings, admin only ──────────────────────────
         app.get("/bookings/admin", verifyToken, requireRole('admin'), async (req: AuthedRequest, res: Response) => {
             const result = await bookingsCollection
                 .find()
@@ -320,23 +306,20 @@ async function run() {
             res.json(result);
         });
 
-
-
         // ── GET /bookings/host — bookings for a host's spaces ───────────────────────
         app.get("/bookings/host", verifyToken, requireRole("host", "admin"), async (req: AuthedRequest, res: Response) => {
             const hostEmail = req.user?.email;
 
-            const hostRooms = await roomsCollection.find({ hostEmail } as any).toArray();
+            const hostRooms = await roomsCollection.find({ hostEmail } as Filter<Space>).toArray();
             const roomIds = hostRooms.map((room) => String(room._id));
 
             const result = await bookingsCollection
-                .find({ spaceId: { $in: roomIds } } as any)
+                .find({ spaceId: { $in: roomIds } } as Filter<Booking>)
                 .sort({ createdAt: -1 })
                 .toArray();
 
             res.json(result);
         });
-
 
         // ── PATCH /bookings/:id/status — host confirms/cancels/completes ──────────
         app.patch("/bookings/:id/status", verifyToken, requireRole("host", "admin"), async (req: Request, res: Response) => {
@@ -348,16 +331,11 @@ async function run() {
             }
 
             const result = await bookingsCollection.updateOne(
-                { _id: new ObjectId(id) } as any,
+                { _id: new ObjectId(id) } as Filter<Booking>,
                 { $set: { status } }
             );
             res.json(result);
         });
-
-
-
-    
-
 
     } finally {
         // await client.close();

@@ -1,3 +1,6 @@
+import { ObjectId } from "mongodb";
+import { Request } from "express";
+
 // ── Domain types ───────────────────────────────────────────────────────────
 export type CategoryCode = "co-working" | "meeting-room" | "event-hall" | "studio";
 export type CategoryLabel = "Co-working" | "Meeting Room" | "Event Hall" | "Studio";
@@ -6,7 +9,7 @@ export type UserRole = "user" | "host" | "admin";
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 
 export interface Space {
-  _id?: string;
+  _id?: ObjectId;
   title: string;
   shortDescription: string;
   fullDescription?: string;
@@ -26,9 +29,8 @@ export interface Space {
   createdAt?: Date;
 }
 
-
 export interface Booking {
-  _id?: string;
+  _id?: ObjectId;
   spaceId: string;
   userId: string;
   userEmail: string;
@@ -41,7 +43,7 @@ export interface Booking {
 }
 
 export interface Review {
-  _id?: string;
+  _id?: ObjectId;
   spaceId: string;
   userId: string;
   userName: string;
@@ -59,7 +61,7 @@ export interface JwtUserPayload {
   [key: string]: unknown; // jose's JWTPayload has other standard claims (iat, exp, etc.)
 }
 
-// ── Extend Express's Request to carry a typed `user` ─────────────────────────
+// ── Extend Express's Request (not the DOM Request) to carry a typed `user` ──
 export interface AuthedRequest extends Request {
   user?: JwtUserPayload;
 }
